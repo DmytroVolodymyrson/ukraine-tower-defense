@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🇺🇦 Захист України</title>
+  <style>
+    :root {
+      --uk-blue: #0057b8;
+      --uk-yellow: #ffd700;
+      --bg: #0d1520;
+      --panel: #142238;
+      --tile-a: #3f7f45;
+      --tile-b: #3a743f;
+      --path: #8a6a45;
+      --path-edge: #5f482f;
+      --ink: #f4f8ff;
+      --danger: #ff5c5c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 15%, #13335f 0%, transparent 35%),
+        radial-gradient(circle at 75% 70%, #1d3f6b 0%, transparent 40%),
+        linear-gradient(165deg, #0a111b 0%, #091726 100%);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+    }
+
+    .game-frame {
+      padding: 6px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #0057b8 0%, #1a7fe2 38%, #ffd700 70%, #f0c200 100%);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    canvas {
+      border: 2px solid rgba(5, 14, 28, 0.75);
+      border-radius: 12px;
+      background: #20324c;
+      image-rendering: crisp-edges;
+      cursor: crosshair;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-frame">
+    <canvas id="game" width="1160" height="660"></canvas>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+
+      const GRID_COLS = 20;
+      const GRID_ROWS = 15;
+      const TILE = 40;
+      const TOP_H = 60;
+      const MAP_W = GRID_COLS * TILE;
+      const MAP_H = GRID_ROWS * TILE;
+      const PANEL_X = MAP_W;
+      const PANEL_W = canvas.width - MAP_W;
+
+      const state = {
+        wave: 0,
+        coins: 200,
+        lives: 20,
+        towers: [],
+        enemies: [],
+        projectiles: [],
+        selectedTowerId: "soldier",
+        hoverTile: null,
+        spawnQueue: [],
+        spawnTimer: 0,
+        waveActive: false,
+        intermission: 2.5,
+        gameOver: false,
+        score: 0,
+        clickPulse: 0
+      };
+
+      // === ASSET LOADING ===
+      const tilesheet = new Image();
+      tilesheet.src = "assets/kenney/Tilesheet/towerDefense_tilesheet.png";
+      const TS = 64; // tile size in tilesheet
+      const TS_COLS = 23;
+      function drawTile(tileNum, dx, dy, dw, dh) {
+        // tileNum is 1-indexed
+        const idx = tileNum - 1;
+        const sx = (idx % TS_COLS) * TS;
+        const sy = Math.floor(idx / TS_COLS) * TS;
+        ctx.drawImage(tilesheet, sx, sy, TS, TS, dx, dy, dw || TILE, dh || TILE);
+      }
+
+      // Decoration positions (random trees/rocks on empty grass tiles, generated once)
+      const decorations = [];
+      function generateDecorations() {
+        decorations.length = 0;
+        const decoTiles = [136]; // rock only
+        for (let row = 0; row < GRID_ROWS; row++) {
+          for (let col = 0; col < GRID_COLS; col++) {
+            if (pathTileSet.has(`${col},${row}`)) continue;
+            // Don't place decorations adjacent to path (leave room for towers)
+            let adjPath = false;
+            for (const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+              if (pathTileSet.has(`${col+dx},${row+dy}`)) { adjPath = true; break; }
+            }
+            if (adjPath) continue;
+            if (Math.random() < 0.06) {
+              decorations.push({
+                col, row,
+                tile: decoTiles[Math.floor(Math.random() * decoTiles.length)]
+              });
+            }
+          }
+        }
+      }
+
+      // === AUDIO ===
+      const bgMusic = new Audio("assets/audio/td-theme.mp3");
+      bgMusic.loop = true;
+      bgMusic.volume = 0.35;
+      let musicStarted = false;
+
+      const sfx = {
+        shoot: new Audio("assets/audio/shoot.mp3"),
+        explosion: new Audio("assets/audio/explosion.mp3"),
+        explosion2: new Audio("assets/audio/explosion2.mp3"),
+        coin: new Audio("assets/audio/coin.mp3"),
+        waveStart: new Audio("assets/audio/wave-start.mp3"),
+        click: new Audio("assets/audio/click.mp3")
+      };
+      // Pre-clone for overlapping sounds
+      function playSfx(name, vol = 0.3) {
+        const s = sfx[name];
+        if (!s) return;
+        const clone = s.cloneNode();
+        clone.volume = vol;
+        clone.play().catch(() => {});
+      }
+
+      const towerTypes = {
+        soldier: {
+          id: "soldier",
+          name: "Солдат",
+          icon: "🇺🇦",
+          color: "#5fb1ff",
+          cost: 50,
+          range: 110,
+          damage: 28,
+          fireRate: 0.4,
+          projectileSpeed: 330,
+          canHitAir: false,
+          splash: 0
+        },
+        sniper: {
+          id: "sniper",
+          name: "Снайпер",
+          icon: "🔱",
+          color: "#ffd76f",
+          cost: 100,
+          range: 200,
+          damage: 110,
+          fireRate: 1.3,
+          projectileSpeed: 520,
+          canHitAir: false,
+          splash: 0
+        },
+        artillery: {
+          id: "artillery",
+          name: "Артилерія",
+          icon: "🌻",
+          color: "#ff9b7d",
+          cost: 150,
+          range: 145,
+          damage: 70,
+          fireRate: 1.6,
+          projectileSpeed: 260,
+          canHitAir: false,
+          splash: 56
+        },
+        drone: {
+          id: "drone",
+          name: "Байрактар",
+          icon: "🛩️",
+          color: "#a6f5a1",
+          cost: 200,
+          range: 160,
+          damage: 45,
+          fireRate: 0.24,
+          projectileSpeed: 370,
+          canHitAir: true,
+          splash: 0
+        }
+      };
+
+      const orcFirstNames = [
+        "Кельтиан","Борислав","Генадий","Дмитрий","Евгений","Захар","Игорь",
+        "Константин","Леонид","Михаил","Николай","Олег","Павел","Руслан",
+        "Сергей","Тимофей","Федор","Юрий","Артем","Виктор","Григорий",
+        "Денис","Иван","Кирилл","Максим","Никита","Петр","Роман","Степан",
+        "Алексей","Андрей","Василий","Владимир","Вячеслав","Геннадий"
+      ];
+      const orcLastNames = [
+        "Путинков","Медведев","Лавров","Шойгу","Кадыров","Пригожин",
+        "Иванов","Петров","Сидоров","Козлов","Баранов","Свинцов",
+        "Мухин","Тупицын","Дуров","Орлов","Волков","Зайцев","Мышкин"
+      ];
+      function randomOrcName() {
+        const f = orcFirstNames[Math.floor(Math.random() * orcFirstNames.length)];
+        const l = orcLastNames[Math.floor(Math.random() * orcLastNames.length)];
+        return f + " " + l;
+      }
+      function randomVehicleName(prefix) {
+        return prefix + "-" + Math.floor(Math.random() * 900 + 100);
+      }
+
+      const enemyTypes = {
+        infantry: {
+          id: "infantry",
+          name: "Орк",
+          hp: 140,
+          speed: 42,
+          reward: 10,
+          armor: 0,
+          size: 14,
+          isAir: false,
+          color: "#a9d06a"
+        },
+        apc: {
+          id: "apc",
+          name: "БТР",
+          hp: 350,
+          speed: 34,
+          reward: 25,
+          armor: 3,
+          size: 16,
+          isAir: false,
+          color: "#915353"
+        },
+        tank: {
+          id: "tank",
+          name: "Танк",
+          hp: 800,
+          speed: 20,
+          reward: 50,
+          armor: 7,
+          size: 18,
+          isAir: false,
+          color: "#7f4545"
+        },
+        helicopter: {
+          id: "helicopter",
+          name: "Гелікоптер",
+          hp: 400,
+          speed: 58,
+          reward: 40,
+          armor: 2,
+          size: 14,
+          isAir: true,
+          color: "#cd6060"
+        },
+        bossTank: {
+          id: "bossTank",
+          name: "Генерал",
+          hp: 4000,
+          speed: 18,
+          reward: 200,
+          armor: 12,
+          size: 24,
+          isAir: false,
+          color: "#ff9f9f",
+          isBoss: true
+        }
+      };
+
+      const pathWaypoints = [
+        [0, 7],
+        [2, 7],
+        [2, 3],
+        [5, 3],
+        [5, 10],
+        [9, 10],
+        [9, 5],
+        [13, 5],
+        [13, 12],
+        [17, 12],
+        [17, 6],
+        [19, 6]
+      ];
+
+      function pointFromTile(tx, ty) {
+        return {
+          x: tx * TILE + TILE / 2,
+          y: TOP_H + ty * TILE + TILE / 2
+        };
+      }
+
+      function buildPathTiles() {
+        const tiles = [];
+        const seen = new Set();
+        for (let i = 0; i < pathWaypoints.length - 1; i++) {
+          const [sx, sy] = pathWaypoints[i];
+          const [ex, ey] = pathWaypoints[i + 1];
+          const dx = Math.sign(ex - sx);
+          const dy = Math.sign(ey - sy);
+          let x = sx;
+          let y = sy;
+          const key0 = `${x},${y}`;
+          if (!seen.has(key0)) { seen.add(key0); tiles.push({ x, y }); }
+          while (x !== ex || y !== ey) {
+            if (x !== ex) x += dx;
+            else if (y !== ey) y += dy;
+            const key = `${x},${y}`;
+            if (!seen.has(key)) { seen.add(key); tiles.push({ x, y }); }
+          }
+        }
+        return tiles;
+      }
+
+      const pathTiles = buildPathTiles();
+      const pathTileSet = new Set(pathTiles.map((t) => `${t.x},${t.y}`));
+      const pathPoints = pathTiles.map((t) => pointFromTile(t.x, t.y));
+
+      // Generate decorations after path is known
+      tilesheet.onload = () => { generateDecorations(); };
+
+      function dist(ax, ay, bx, by) {
+        return Math.hypot(ax - bx, ay - by);
+      }
+
+      function isTowerAt(tx, ty) {
+        return state.towers.some((t) => t.tx === tx && t.ty === ty);
+      }
+
+      function tileValidForTower(tx, ty) {
+        if (tx < 0 || ty < 0 || tx >= GRID_COLS || ty >= GRID_ROWS) return false;
+        if (pathTileSet.has(`${tx},${ty}`)) return false;
+        if (isTowerAt(tx, ty)) return false;
+        return true;
+      }
+
+      function makeTower(tx, ty, type) {
+        const center = pointFromTile(tx, ty);
+        return {
+          tx,
+          ty,
+          x: center.x,
+          y: center.y,
+          cooldown: Math.random() * 0.15,
+          type
+        };
+      }
+
+      function makeEnemy(typeKey) {
+        const type = enemyTypes[typeKey];
+        const p0 = pathPoints[0];
+        let nick;
+        if (typeKey === "infantry") nick = randomOrcName();
+        else if (typeKey === "bossTank") nick = "Ген. " + orcFirstNames[Math.floor(Math.random() * orcFirstNames.length)];
+        else nick = randomVehicleName(type.name);
+        return {
+          typeKey,
+          type,
+          nick,
+          hp: type.hp,
+          maxHp: type.hp,
+          x: p0.x,
+          y: p0.y,
+          pathIndex: 0,
+          dead: false,
+          reachedEnd: false
+        };
+      }
+
+      function spawnWave() {
+        state.wave += 1;
+        state.waveActive = true;
+        playSfx("waveStart", 0.5);
+        state.spawnQueue = [];
+        state.spawnTimer = 0;
+
+        const normalCount = 6 + state.wave * 2;
+        const isBossWave = state.wave % 5 === 0;
+
+        function pickEnemy() {
+          const r = Math.random();
+          if (state.wave <= 2) return r < 0.80 ? "infantry" : "apc";
+          if (state.wave <= 4) {
+            if (r < 0.60) return "infantry";
+            if (r < 0.82) return "apc";
+            if (r < 0.92) return "tank";
+            return "helicopter";
+          }
+          if (r < 0.45) return "infantry";
+          if (r < 0.70) return "apc";
+          if (r < 0.85) return "tank";
+          return "helicopter";
+        }
+
+        for (let i = 0; i < normalCount; i++) {
+          state.spawnQueue.push(pickEnemy());
+        }
+
+        if (isBossWave) {
+          state.spawnQueue.splice(Math.floor(state.spawnQueue.length * 0.5), 0, "bossTank");
+          state.spawnQueue.push("tank", "tank", "helicopter");
+        }
+      }
+
+      function damageEnemy(target, amount, splashRadius = 0) {
+        if (!target || target.dead) return;
+
+        const primary = Math.max(1, amount - (target.type.armor || 0));
+        target.hp -= primary;
+        if (target.hp <= 0) {
+          target.dead = true;
+          state.coins += target.type.reward;
+          state.score += target.type.reward;
+          playSfx(target.type.isBoss ? "explosion2" : "explosion", 0.25);
+          playSfx("coin", 0.15);
+        }
+
+        if (splashRadius > 0) {
+          for (const enemy of state.enemies) {
+            if (enemy === target || enemy.dead) continue;
+            const d = dist(target.x, target.y, enemy.x, enemy.y);
+            if (d <= splashRadius) {
+              const splashDamage = Math.max(1, Math.floor(primary * 0.65) - (enemy.type.armor || 0));
+              enemy.hp -= splashDamage;
+              if (enemy.hp <= 0 && !enemy.dead) {
+                enemy.dead = true;
+                state.coins += enemy.type.reward;
+                state.score += enemy.type.reward;
+              }
+            }
+          }
+        }
+      }
+
+      function updateEnemies(dt) {
+        for (const enemy of state.enemies) {
+          if (enemy.dead || enemy.reachedEnd) continue;
+
+          let remaining = enemy.type.speed * dt;
+          while (remaining > 0.1 && enemy.pathIndex < pathPoints.length - 1) {
+            const nextPoint = pathPoints[enemy.pathIndex + 1];
+            const vx = nextPoint.x - enemy.x;
+            const vy = nextPoint.y - enemy.y;
+            const len = Math.hypot(vx, vy);
+            if (len <= remaining) {
+              enemy.x = nextPoint.x;
+              enemy.y = nextPoint.y;
+              remaining -= len;
+              enemy.pathIndex += 1;
+            } else {
+              enemy.x += (vx / len) * remaining;
+              enemy.y += (vy / len) * remaining;
+              remaining = 0;
+            }
+          }
+          if (enemy.pathIndex >= pathPoints.length - 1) {
+            enemy.reachedEnd = true;
+            state.lives -= enemy.type.isBoss ? 5 : 1;
+            if (state.lives <= 0) {
+              state.lives = 0;
+              state.gameOver = true;
+            }
+          }
+        }
+
+        state.enemies = state.enemies.filter((e) => !e.dead && !e.reachedEnd);
+      }
+
+      function chooseTarget(tower) {
+        let best = null;
+        let bestProgress = -1;
+        for (const enemy of state.enemies) {
+          if (enemy.dead) continue;
+          if (enemy.type.isAir && !tower.type.canHitAir) continue;
+          const d = dist(tower.x, tower.y, enemy.x, enemy.y);
+          if (d <= tower.type.range) {
+            const progress = enemy.pathIndex + (enemy.type.isAir ? 0.15 : 0);
+            if (progress > bestProgress) {
+              bestProgress = progress;
+              best = enemy;
+            }
+          }
+        }
+        return best;
+      }
+
+      function updateTowers(dt) {
+        for (const tower of state.towers) {
+          tower.cooldown -= dt;
+          if (tower.cooldown > 0) continue;
+
+          const target = chooseTarget(tower);
+          if (!target) continue;
+
+          tower.cooldown = tower.type.fireRate;
+          if (Math.random() < 0.3) playSfx("shoot", 0.1); // throttle shoot SFX
+          state.projectiles.push({
+            x: tower.x,
+            y: tower.y,
+            target,
+            damage: tower.type.damage,
+            speed: tower.type.projectileSpeed,
+            splash: tower.type.splash,
+            color: tower.type.color,
+            life: 1.6
+          });
+        }
+      }
+
+      function updateProjectiles(dt) {
+        for (const p of state.projectiles) {
+          p.life -= dt;
+          if (p.life <= 0 || !p.target || p.target.dead) {
+            p.dead = true;
+            continue;
+          }
+
+          const tx = p.target.x;
+          const ty = p.target.y - (p.target.type.isAir ? 10 : 0);
+          const vx = tx - p.x;
+          const vy = ty - p.y;
+          const len = Math.hypot(vx, vy) || 1;
+          const step = p.speed * dt;
+
+          if (len <= step + 3) {
+            damageEnemy(p.target, p.damage, p.splash);
+            p.dead = true;
+          } else {
+            p.x += (vx / len) * step;
+            p.y += (vy / len) * step;
+          }
+        }
+
+        state.projectiles = state.projectiles.filter((p) => !p.dead);
+      }
+
+      function updateWaveSpawner(dt) {
+        if (!state.waveActive) {
+          state.intermission -= dt;
+          if (state.intermission <= 0) {
+            spawnWave();
+          }
+          return;
+        }
+
+        state.spawnTimer -= dt;
+        if (state.spawnQueue.length > 0 && state.spawnTimer <= 0) {
+          const key = state.spawnQueue.shift();
+          state.enemies.push(makeEnemy(key));
+          const base = key === "infantry" ? 0.44 : key === "helicopter" ? 0.68 : 0.82;
+          state.spawnTimer = base;
+        }
+
+        if (state.spawnQueue.length === 0 && state.enemies.length === 0) {
+          state.waveActive = false;
+          state.intermission = 6;
+          state.coins += 35 + state.wave * 3;
+        }
+      }
+
+      function update(dt) {
+        if (state.gameOver) return;
+        state.clickPulse = Math.max(0, state.clickPulse - dt * 3);
+        updateWaveSpawner(dt);
+        updateEnemies(dt);
+        updateTowers(dt);
+        updateProjectiles(dt);
+      }
+
+      function drawGrid() {
+        const useTiles = tilesheet.complete && tilesheet.naturalWidth > 0;
+        for (let y = 0; y < GRID_ROWS; y++) {
+          for (let x = 0; x < GRID_COLS; x++) {
+            const px = x * TILE;
+            const py = TOP_H + y * TILE;
+            const even = (x + y) % 2 === 0;
+            ctx.fillStyle = even ? "#3f8045" : "#39753f";
+            ctx.fillRect(px, py, TILE, TILE);
+            ctx.strokeStyle = "rgba(7, 38, 14, 0.18)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+          }
+        }
+
+        for (const tile of pathTiles) {
+          const px = tile.x * TILE;
+          const py = TOP_H + tile.y * TILE;
+          ctx.fillStyle = "#8b6a45";
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.strokeStyle = "#5b432b";
+          ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
+        }
+
+        // Draw small Canvas-drawn decorations (grass tufts, small stones)
+        for (const d of decorations) {
+          const dx = d.col * TILE + TILE / 2;
+          const dy = TOP_H + d.row * TILE + TILE / 2;
+          ctx.save();
+          if (d.tile === 136) {
+            // Small stone
+            ctx.fillStyle = "#7a8a7a";
+            ctx.beginPath();
+            ctx.ellipse(dx - 4, dy + 6, 6, 4, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#8a9a8a";
+            ctx.beginPath();
+            ctx.ellipse(dx + 5, dy + 4, 4, 3, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawTopBar() {
+        ctx.fillStyle = "#0d1e39";
+        ctx.fillRect(0, 0, canvas.width, TOP_H);
+        ctx.textAlign = "left";
+
+        const stripeW = canvas.width / 2;
+        ctx.fillStyle = "#0057b8";
+        ctx.fillRect(0, 0, stripeW, 8);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(stripeW, 0, stripeW, 8);
+
+        ctx.fillStyle = "#f4f8ff";
+        ctx.font = "700 20px Trebuchet MS";
+        ctx.fillText("🇺🇦 Захист України", 30, 28);
+        ctx.font = "700 21px Trebuchet MS";
+        ctx.fillStyle = "#ffe071";
+        ctx.fillText(`🔱 Хвиля ${state.wave}${state.waveActive ? "" : " • підготовка"}`, 30, 50);
+        ctx.fillStyle = "#ffe071";
+        ctx.fillText(`Ресурси: ${state.coins}`, 360, 50);
+        ctx.fillStyle = state.lives <= 6 ? "#ff8585" : "#b5f6b5";
+        ctx.fillText(`База: ${state.lives}`, 570, 50);
+        ctx.fillStyle = "#a8d2ff";
+        ctx.font = "600 16px Trebuchet MS";
+
+        if (!state.waveActive && !state.gameOver) {
+          ctx.fillText("🇺🇦 Будуй оборону!", 760, 29);
+          ctx.fillText(`Наступ ворога через ${Math.ceil(state.intermission)}с`, 760, 50);
+        } else if (state.waveActive) {
+          ctx.fillText(`Ворогів у наступі: ${state.spawnQueue.length + state.enemies.length}`, 760, 42);
+        }
+      }
+
+      function drawTower(tower) {
+        const { x, y, type } = tower;
+        ctx.save();
+        ctx.translate(x, y);
+
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.beginPath();
+        ctx.ellipse(0, 13, 14, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#24324d";
+        ctx.fillRect(-13, -10, 26, 22);
+        ctx.fillStyle = type.color;
+        ctx.fillRect(-8, -5, 16, 12);
+        ctx.fillStyle = "#f3f8ff";
+        ctx.font = "700 17px 'Segoe UI Emoji', 'Apple Color Emoji', Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText(type.icon, 0, 5);
+
+        ctx.restore();
+      }
+
+      function drawEnemies() {
+        ctx.save();
+        for (const enemy of state.enemies) {
+          const e = enemy.type;
+          const yOffset = e.isAir ? -10 : 0;
+
+          ctx.fillStyle = "rgba(0,0,0,0.22)";
+          ctx.beginPath();
+          ctx.ellipse(enemy.x, enemy.y + 11, e.size * 0.75, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (enemy.typeKey === "infantry") {
+            ctx.fillStyle = "#3f6928";
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y + yOffset, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#761f1f";
+            ctx.beginPath();
+            ctx.arc(enemy.x - 6, enemy.y + yOffset + 1, 4, 0, Math.PI * 2);
+            ctx.arc(enemy.x + 6, enemy.y + yOffset + 1, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#f0f0f0";
+            ctx.font = "700 13px 'Segoe UI Emoji', 'Apple Color Emoji', Trebuchet MS";
+            ctx.textAlign = "center";
+            ctx.fillText("👹", enemy.x, enemy.y + yOffset + 4);
+          } else if (enemy.typeKey === "apc") {
+            ctx.fillStyle = "#7a3434";
+            ctx.fillRect(enemy.x - 11, enemy.y + yOffset - 7, 22, 14);
+            ctx.fillStyle = "#2b2b2b";
+            ctx.fillRect(enemy.x - 6, enemy.y + yOffset - 10, 12, 5);
+            ctx.fillStyle = "#1e1e1e";
+            ctx.fillRect(enemy.x - 12, enemy.y + yOffset + 5, 24, 3);
+          } else if (enemy.typeKey === "tank" || enemy.typeKey === "bossTank") {
+            const bodyW = enemy.typeKey === "bossTank" ? 32 : 26;
+            const bodyH = enemy.typeKey === "bossTank" ? 18 : 14;
+            ctx.fillStyle = enemy.typeKey === "bossTank" ? "#8e1b1b" : "#6f2d2d";
+            ctx.fillRect(enemy.x - bodyW / 2, enemy.y + yOffset - bodyH / 2, bodyW, bodyH);
+            ctx.fillStyle = "#2f2f2f";
+            ctx.fillRect(enemy.x - bodyW / 2 - 2, enemy.y + yOffset + bodyH / 2 - 3, bodyW + 4, 4);
+            ctx.fillStyle = "#3d3d3d";
+            ctx.fillRect(enemy.x - 5, enemy.y + yOffset - bodyH / 2 - 4, 10, 6);
+            ctx.strokeStyle = "#1a1a1a";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(enemy.x + 5, enemy.y + yOffset - bodyH / 2 + 1);
+            ctx.lineTo(enemy.x + 17, enemy.y + yOffset - bodyH / 2 - 1);
+            ctx.stroke();
+          } else if (enemy.typeKey === "helicopter") {
+            ctx.fillStyle = "#8f3232";
+            ctx.beginPath();
+            ctx.moveTo(enemy.x, enemy.y + yOffset - e.size / 2);
+            ctx.lineTo(enemy.x + e.size, enemy.y + yOffset);
+            ctx.lineTo(enemy.x, enemy.y + yOffset + e.size / 2);
+            ctx.lineTo(enemy.x - e.size, enemy.y + yOffset);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = "#1f1f1f";
+            ctx.fillRect(enemy.x - e.size - 2, enemy.y + yOffset - 8, e.size * 2 + 4, 3);
+            ctx.strokeStyle = "#2e1414";
+            ctx.stroke();
+          }
+
+          const barW = Math.max(22, e.size * 1.8);
+          const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
+          ctx.fillStyle = "rgba(20, 22, 30, 0.8)";
+          ctx.fillRect(enemy.x - barW / 2, enemy.y + yOffset - e.size / 2 - 12, barW, 5);
+          ctx.fillStyle = e.isBoss ? "#ff6f6f" : "#67df8b";
+          ctx.fillRect(enemy.x - barW / 2, enemy.y + yOffset - e.size / 2 - 12, barW * hpRatio, 5);
+
+          ctx.textAlign = "center";
+
+          // nickname above unit
+          ctx.fillStyle = "rgba(255,220,220,0.9)";
+          ctx.font = "600 9px Trebuchet MS";
+          ctx.fillText(enemy.nick, enemy.x, enemy.y + yOffset - e.size / 2 - 14);
+        }
+        ctx.restore();
+      }
+
+      function drawProjectiles() {
+        for (const p of state.projectiles) {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.splash > 0 ? 4 : 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawPanel() {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#13233a";
+        ctx.fillRect(PANEL_X, TOP_H, PANEL_W, MAP_H);
+
+        ctx.fillStyle = "#0057b8";
+        ctx.fillRect(PANEL_X, TOP_H, PANEL_W, 6);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(PANEL_X, TOP_H + 6, PANEL_W, 6);
+
+        ctx.fillStyle = "#eef6ff";
+        ctx.font = "bold 20px Trebuchet MS";
+        ctx.fillText("Оборона", PANEL_X + 16, TOP_H + 38);
+
+        const ids = Object.keys(towerTypes);
+        ids.forEach((id, i) => {
+          const type = towerTypes[id];
+          const y = TOP_H + 58 + i * 128;
+          const selected = state.selectedTowerId === id;
+          const canAfford = state.coins >= type.cost;
+
+          ctx.fillStyle = selected ? "#1f4c84" : "#20304a";
+          ctx.fillRect(PANEL_X + 12, y, PANEL_W - 24, 114);
+          ctx.strokeStyle = selected ? "#ffd700" : "rgba(255,255,255,0.2)";
+          ctx.lineWidth = selected ? 2 : 1;
+          ctx.strokeRect(PANEL_X + 12.5, y + 0.5, PANEL_W - 25, 113);
+
+          ctx.fillStyle = type.color;
+          ctx.fillRect(PANEL_X + 20, y + 12, 34, 34);
+          ctx.fillStyle = "#0f1d30";
+          ctx.fillRect(PANEL_X + 23, y + 15, 28, 28);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "700 20px 'Segoe UI Emoji', 'Apple Color Emoji', Trebuchet MS";
+          ctx.textAlign = "center";
+          ctx.fillText(type.icon, PANEL_X + 37, y + 36);
+          ctx.textAlign = "left";
+          ctx.fillStyle = "#f7fbff";
+          ctx.font = "700 15px Trebuchet MS";
+          ctx.fillText(type.name, PANEL_X + 60, y + 33);
+
+          ctx.font = "600 14px Trebuchet MS";
+          ctx.fillStyle = canAfford ? "#ffe071" : "#ff9999";
+          ctx.fillText(`Ціна: ${type.cost}`, PANEL_X + 22, y + 60);
+
+          ctx.fillStyle = "#d3e7ff";
+          ctx.fillText(`Шкд ${type.damage}  Рад ${Math.round(type.range / TILE)}`, PANEL_X + 22, y + 82);
+          ctx.fillStyle = "#b8d8ff";
+          ctx.fillText(type.canHitAir ? "Цілі: Земля + Повітря" : "Цілі: Земля", PANEL_X + 22, y + 102);
+        });
+
+        ctx.fillStyle = "#a7cbf7";
+        ctx.font = "600 14px Trebuchet MS";
+        ctx.fillText("Обери башту та клікай по полю", PANEL_X + 16, canvas.height - 36);
+      }
+
+      function drawHoverPreview() {
+        if (!state.hoverTile || state.gameOver) return;
+        const towerType = towerTypes[state.selectedTowerId];
+        const { x, y } = state.hoverTile;
+        if (x < 0 || y < 0 || x >= GRID_COLS || y >= GRID_ROWS) return;
+
+        const valid = tileValidForTower(x, y);
+        const center = pointFromTile(x, y);
+
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = valid ? "#9be7a2" : "#ff8b8b";
+        ctx.fillRect(x * TILE, TOP_H + y * TILE, TILE, TILE);
+
+        ctx.globalAlpha = 0.14;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, towerType.range, 0, Math.PI * 2);
+        ctx.fillStyle = valid ? "#82c4ff" : "#ff7f7f";
+        ctx.fill();
+
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = valid ? "#93d3ff" : "#ff7b7b";
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawTowers() {
+        for (const tower of state.towers) drawTower(tower);
+      }
+
+      function drawPathFlow() {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 235, 180, 0.18)";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+        for (let i = 1; i < pathPoints.length; i++) {
+          ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawStartEndMarkers() {
+        ctx.save();
+        const s = pathPoints[0];
+        const e = pathPoints[pathPoints.length - 1];
+
+        ctx.fillStyle = "#83d8ff";
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#0a223d";
+        ctx.font = "bold 11px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText("ВХІД", s.x, s.y + 4);
+
+        ctx.fillStyle = "#ffc262";
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#4a2a09";
+        ctx.fillText("БАЗА", e.x, e.y + 4);
+        ctx.restore();
+      }
+
+      function drawPulse() {
+        if (!state.clickPulse) return;
+        const r = 28 + state.clickPulse * 10;
+        ctx.save();
+        ctx.globalAlpha = 0.24 * state.clickPulse;
+        ctx.strokeStyle = "#ffe57b";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(PANEL_X + PANEL_W / 2, TOP_H + 34, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawGameOver() {
+        if (!state.gameOver) return;
+        ctx.fillStyle = "rgba(8, 14, 25, 0.78)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const boxW = 440;
+        const boxH = 250;
+        const x = (canvas.width - boxW) / 2;
+        const y = (canvas.height - boxH) / 2;
+
+        ctx.fillStyle = "#152843";
+        ctx.fillRect(x, y, boxW, boxH);
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x + 1.5, y + 1.5, boxW - 3, boxH - 3);
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ff9f9f";
+        ctx.font = "700 43px Trebuchet MS";
+        ctx.fillText("ПОРАЗКА", canvas.width / 2, y + 76);
+
+        ctx.fillStyle = "#eef6ff";
+        ctx.font = "600 22px Trebuchet MS";
+        ctx.fillText(`Протримались до хвилі ${state.wave}`, canvas.width / 2, y + 122);
+        ctx.fillText(`Рахунок: ${state.score}`, canvas.width / 2, y + 153);
+
+        const btn = restartButtonRect();
+        ctx.fillStyle = "#0057b8";
+        ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(btn.x, btn.y + btn.h - 6, btn.w, 6);
+        ctx.strokeStyle = "#9bc8ff";
+        ctx.strokeRect(btn.x + 0.5, btn.y + 0.5, btn.w - 1, btn.h - 1);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "700 20px Trebuchet MS";
+        ctx.fillText("Спробувати ще", canvas.width / 2, btn.y + 32);
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawTopBar();
+        drawGrid();
+        drawPathFlow();
+        drawStartEndMarkers();
+        drawHoverPreview();
+        drawTowers();
+        drawProjectiles();
+        drawEnemies();
+        drawPanel();
+        drawPulse();
+        drawGameOver();
+      }
+
+      function panelTowerAt(x, y) {
+        if (x < PANEL_X + 12 || x > canvas.width - 12) return null;
+        const ids = Object.keys(towerTypes);
+        for (let i = 0; i < ids.length; i++) {
+          const top = TOP_H + 58 + i * 128;
+          if (y >= top && y <= top + 114) return ids[i];
+        }
+        return null;
+      }
+
+      function restartButtonRect() {
+        return {
+          x: canvas.width / 2 - 92,
+          y: canvas.height / 2 + 74,
+          w: 184,
+          h: 46
+        };
+      }
+
+      function resetGame() {
+        state.wave = 0;
+        state.coins = 200;
+        state.lives = 20;
+        state.towers = [];
+        state.enemies = [];
+        state.projectiles = [];
+        state.selectedTowerId = "soldier";
+        state.hoverTile = null;
+        state.spawnQueue = [];
+        state.spawnTimer = 0;
+        state.waveActive = false;
+        state.intermission = 2.2;
+        state.gameOver = false;
+        state.score = 0;
+        state.clickPulse = 0;
+      }
+
+      canvas.addEventListener("mousemove", (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = ev.clientX - rect.left;
+        const y = ev.clientY - rect.top;
+
+        if (x < MAP_W && y >= TOP_H && y < TOP_H + MAP_H) {
+          state.hoverTile = {
+            x: Math.floor(x / TILE),
+            y: Math.floor((y - TOP_H) / TILE)
+          };
+        } else {
+          state.hoverTile = null;
+        }
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        state.hoverTile = null;
+      });
+
+      canvas.addEventListener("click", (ev) => {
+        // Start music on first interaction
+        if (!musicStarted) { bgMusic.play().catch(() => {}); musicStarted = true; }
+
+        const rect = canvas.getBoundingClientRect();
+        const x = ev.clientX - rect.left;
+        const y = ev.clientY - rect.top;
+
+        if (state.gameOver) {
+          const btn = restartButtonRect();
+          if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+            resetGame();
+          }
+          return;
+        }
+
+        const panelChoice = panelTowerAt(x, y);
+        if (panelChoice) {
+          state.selectedTowerId = panelChoice;
+          state.clickPulse = 1;
+          return;
+        }
+
+        if (x >= MAP_W || y < TOP_H || y >= TOP_H + MAP_H) return;
+
+        const tx = Math.floor(x / TILE);
+        const ty = Math.floor((y - TOP_H) / TILE);
+        const type = towerTypes[state.selectedTowerId];
+
+        if (!tileValidForTower(tx, ty)) return;
+        if (state.coins < type.cost) return;
+
+        state.coins -= type.cost;
+        state.towers.push(makeTower(tx, ty, type));
+        playSfx("click", 0.4);
+      });
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.033, (now - last) / 1000);
+        last = now;
+        update(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      resetGame();
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
