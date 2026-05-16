@@ -45,7 +45,7 @@ function keyboard(state) {
   return { inline_keyboard: [
     [{ text: '🚌 Зайти в бусик', callback_data: `join:${state.id}` }],
     [{ text: '⚔️ Запустити хвилю', callback_data: `wave:${state.id}` }],
-    [{ text: '🎮 Відкрити Mini App', web_app: { url: `${APP_URL}?raid=${encodeURIComponent(state.id)}` } }],
+    [{ text: '🎮 Відкрити гру', url: `${APP_URL}?raid=${encodeURIComponent(state.id)}` }],
     [{ text: '📣 Покликати друзів', url: `https://t.me/share/url?url=${encodeURIComponent('https://t.me/orkodavtd_bot?startgroup=bus')}&text=${encodeURIComponent('Закинь Оркодав TD в чат і збери бусик на фронт 🚌')}` }],
   ] };
 }
