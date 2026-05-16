@@ -4,6 +4,7 @@
       const startButton = document.getElementById("startButton");
       const pauseButton = document.getElementById("pauseButton");
       const restartButton = document.getElementById("restartButton");
+      const shareButton = document.getElementById("shareButton");
       const overlay = document.getElementById("gameOverlay");
       const overlayTitle = document.getElementById("overlayTitle");
       const overlayText = document.getElementById("overlayText");
@@ -18,10 +19,65 @@
       const PANEL_X = MAP_W;
       const PANEL_W = canvas.width - MAP_W;
       const MAX_WAVES = 10;
+      const telegram = window.Telegram?.WebApp || null;
+
+      function applyTelegramViewport() {
+        const h = telegram?.viewportHeight || window.innerHeight;
+        document.documentElement.style.setProperty("--tg-viewport-height", `${Math.max(480, Math.round(h))}px`);
+      }
+
+      function applyTelegramTheme() {
+        const theme = telegram?.themeParams || {};
+        const root = document.documentElement;
+        if (theme.bg_color) root.style.setProperty("--tg-theme-bg-color", theme.bg_color);
+        if (theme.secondary_bg_color) root.style.setProperty("--tg-theme-secondary-bg-color", theme.secondary_bg_color);
+        if (theme.text_color) root.style.setProperty("--tg-theme-text-color", theme.text_color);
+        try {
+          telegram?.setHeaderColor?.(theme.bg_color || "#0057b8");
+          telegram?.setBackgroundColor?.(theme.bg_color || "#0d1520");
+        } catch (_) {}
+      }
+
+      function initTelegramMiniApp() {
+        applyTelegramViewport();
+        window.addEventListener("resize", applyTelegramViewport);
+        if (!telegram) return;
+        document.documentElement.classList.add("telegram-mini-app");
+        try {
+          telegram.ready();
+          telegram.expand();
+          telegram.disableVerticalSwipes?.();
+        } catch (_) {}
+        applyTelegramTheme();
+        telegram.onEvent?.("viewportChanged", applyTelegramViewport);
+        telegram.onEvent?.("themeChanged", applyTelegramTheme);
+      }
+
+      function haptic(kind = "selection") {
+        try {
+          if (!telegram?.HapticFeedback) return;
+          if (kind === "success" || kind === "error" || kind === "warning") {
+            telegram.HapticFeedback.notificationOccurred(kind);
+          } else if (kind === "impact") {
+            telegram.HapticFeedback.impactOccurred("light");
+          } else {
+            telegram.HapticFeedback.selectionChanged();
+          }
+        } catch (_) {}
+      }
+
+      function shareGame() {
+        const url = "https://tower-defense-blond.vercel.app";
+        const text = "Зіграй у Захист України: Telegram Mini App tower defense 🇺🇦";
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+        haptic("impact");
+        if (telegram?.openTelegramLink) telegram.openTelegramLink(shareUrl);
+        else window.open(shareUrl, "_blank", "noopener,noreferrer");
+      }
 
       const state = {
         wave: 0,
-        coins: 200,
+        coins: 120,
         lives: 20,
         towers: [],
         enemies: [],
@@ -404,6 +460,7 @@
           target.dead = true;
           state.coins += target.type.reward;
           state.score += target.type.reward;
+          if (target.type.isBoss) haptic("success");
           playSfx(target.type.isBoss ? "explosion2" : "explosion", 0.25);
           playSfx("coin", 0.15);
         }
@@ -452,6 +509,7 @@
             if (state.lives <= 0) {
               state.lives = 0;
               state.gameOver = true;
+              haptic("error");
               showOverlay("Поразка", `База впала на хвилі ${state.wave}. Рахунок: ${state.score}.`, "Спробувати ще");
               updateButtons();
             }
@@ -550,6 +608,7 @@
           if (state.wave >= MAX_WAVES) {
             state.victory = true;
             state.gameOver = true;
+            haptic("success");
             showOverlay("Перемога", `Витримано ${MAX_WAVES} хвиль. Рахунок: ${state.score}.`, "Грати ще");
             return;
           }
@@ -887,6 +946,7 @@
         state.coins -= cost;
         tower.level += 1;
         setNotice(`${tower.type.name} покращено до Lv${tower.level}`);
+        haptic("success");
         playSfx("coin", 0.2);
       }
 
@@ -897,6 +957,7 @@
         state.towers = state.towers.filter((t) => t !== tower);
         state.selectedTower = null;
         setNotice("Башту продано, ресурси повернено");
+        haptic("impact");
         playSfx("click", 0.35);
       }
 
@@ -1076,11 +1137,19 @@
         state.clickPulse = 0;
       }
 
-      canvas.addEventListener("mousemove", (ev) => {
+      function eventToCanvasPoint(ev) {
         const rect = canvas.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const y = ev.clientY - rect.top;
+        const clientX = ev.clientX ?? ev.touches?.[0]?.clientX ?? 0;
+        const clientY = ev.clientY ?? ev.touches?.[0]?.clientY ?? 0;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+        };
+      }
 
+      function updateHoverFromPoint(x, y) {
         if (x < MAP_W && y >= TOP_H && y < TOP_H + MAP_H) {
           state.hoverTile = {
             x: Math.floor(x / TILE),
@@ -1089,19 +1158,25 @@
         } else {
           state.hoverTile = null;
         }
+      }
+
+      canvas.addEventListener("pointermove", (ev) => {
+        const { x, y } = eventToCanvasPoint(ev);
+        updateHoverFromPoint(x, y);
       });
 
-      canvas.addEventListener("mouseleave", () => {
+      canvas.addEventListener("pointerleave", () => {
         state.hoverTile = null;
       });
 
-      canvas.addEventListener("click", (ev) => {
+      canvas.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        canvas.setPointerCapture?.(ev.pointerId);
         // Start music on first interaction
         if (!musicStarted) { bgMusic.play().catch(() => {}); musicStarted = true; }
 
-        const rect = canvas.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const y = ev.clientY - rect.top;
+        const { x, y } = eventToCanvasPoint(ev);
+        updateHoverFromPoint(x, y);
 
         if (!state.started) return;
 
@@ -1122,6 +1197,7 @@
           state.selectedTowerId = panelChoice;
           state.selectedTower = null;
           state.clickPulse = 1;
+          haptic("selection");
           return;
         }
 
@@ -1132,19 +1208,21 @@
         const existingTower = towerAtTile(tx, ty);
         if (existingTower) {
           state.selectedTower = existingTower;
+          haptic("selection");
           setNotice(`${existingTower.type.name} вибрано. Можна покращити або продати.`);
           return;
         }
 
         const type = towerTypes[state.selectedTowerId];
 
-        if (!tileValidForTower(tx, ty)) { state.selectedTower = null; setNotice("Тут не можна будувати"); return; }
-        if (state.coins < type.cost) { setNotice("Недостатньо ресурсів"); return; }
+        if (!tileValidForTower(tx, ty)) { state.selectedTower = null; haptic("warning"); setNotice("Тут не можна будувати"); return; }
+        if (state.coins < type.cost) { haptic("warning"); setNotice("Недостатньо ресурсів"); return; }
 
         state.coins -= type.cost;
         state.towers.push(makeTower(tx, ty, type));
         state.selectedTower = state.towers[state.towers.length - 1];
         setNotice(`${type.name} побудовано`);
+        haptic("success");
         playSfx("click", 0.4);
       });
 
@@ -1173,6 +1251,7 @@
         hideOverlay();
         updateButtons();
         if (!musicStarted) { bgMusic.play().catch(() => {}); musicStarted = true; }
+        haptic("success");
       }
 
       function togglePause() {
@@ -1186,6 +1265,7 @@
       startButton.addEventListener("click", startGame);
       restartButton.addEventListener("click", startGame);
       pauseButton.addEventListener("click", togglePause);
+      shareButton?.addEventListener("click", shareGame);
       overlayAction.addEventListener("click", () => {
         if (!state.started || state.gameOver) startGame();
         else togglePause();
@@ -1203,6 +1283,7 @@
         requestAnimationFrame(loop);
       }
 
+      initTelegramMiniApp();
       resetGame();
       state.started = false;
       showOverlay("Готуй оборону", "Став башти на траві, покращуй або продавай їх, стримуй 10 хвиль атак.", "Почати гру");

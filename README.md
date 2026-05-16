@@ -1,6 +1,6 @@
-# Захист України v2
+# Захист України
 
-Vanilla HTML5 Canvas tower defense game. Ukrainian defenders build towers to stop waves of Russian attackers.
+Vanilla HTML5 Canvas tower defense game packaged for Telegram Mini App distribution. Ukrainian defenders build towers to stop waves of Russian attackers.
 
 ## Run locally
 
@@ -17,6 +17,21 @@ Open `http://127.0.0.1:8080`.
 npm run check
 npm run smoke
 ```
+
+## Telegram Mini App
+
+Stable URL:
+
+```text
+https://tower-defense-blond.vercel.app
+```
+
+Use this URL in BotFather as the Mini App or menu-button URL. The app loads the Telegram WebApp SDK, expands inside Telegram, applies Telegram theme/viewport values, supports touch/pointer input, and has a Telegram share button.
+
+Docs:
+
+- `docs/telegram-mini-app-plan.md`
+- `docs/economy-research.md`
 
 ## v2 features
 
