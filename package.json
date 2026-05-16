@@ -5,13 +5,13 @@
   "scripts": {
     "serve": "http-server -p 8080 -a 127.0.0.1",
     "start": "npm run serve",
-    "check": "node --check src/app.js",
+    "check": "node --check src/app.js && node --check api/telegram.js",
     "smoke": "npm run check"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Vanilla HTML5 Canvas Ukraine tower defense game",
+  "description": "Vanilla HTML5 Canvas Telegram tower defense game with cooperative chat raid bot",
   "devDependencies": {
     "http-server": "^14.1.1"
   }

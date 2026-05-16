@@ -11,6 +11,21 @@ npm run serve
 
 Open `http://127.0.0.1:8080`.
 
+
+## Telegram chat multiplayer MVP
+
+Group command:
+
+```text
+/bus
+```
+
+The bot posts an animated bus with inline buttons. Each participant can occupy one role only. The wave cannot start until at least 3 users join, so one person cannot use the full group mode alone.
+
+Docs:
+
+- `docs/chat-multiplayer-busification.md`
+
 ## Validation
 
 ```bash
