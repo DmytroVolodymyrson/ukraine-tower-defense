@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "serve": "http-server -p 8080 -a 127.0.0.1",
+    "start": "npm run serve",
+    "check": "node --check src/app.js",
+    "smoke": "npm run check"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Vanilla HTML5 Canvas Ukraine tower defense game",
   "devDependencies": {
     "http-server": "^14.1.1"
   }
