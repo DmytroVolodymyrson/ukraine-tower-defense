@@ -39,7 +39,7 @@ function renderRaid(state, extra = '') {
   const need = Math.max(0, 3 - count);
   const status = count >= 3 ? '✅ Мінімальний екіпаж є. Можна запускати хвилю.' : `🔒 Соло не канає. Потрібно ще ${need} ${need === 1 ? 'людина' : 'людини'}.`;
   const result = extra ? `\n\n${extra}` : '';
-  return `🚌 <b>Бусик прибув у чат</b>\n\nНовий бус привозить добровольців на фронт. Тисни кнопку, отримуй одну роль і сідай в екіпаж.\n\n<b>Екіпаж бусика (${count}/5):</b>\n${roster}\n\n${status}${result}\n\n🧾 ${encodeState(state)}`;
+  return `🚌 <b>Бусик прибув у чат</b>\n\nНовий бус привозить добровольців на фронт. Тисни кнопку, отримуй одну роль і сідай в екіпаж.\n\n<b>Екіпаж бусика (${count}/5):</b>\n${roster}\n\n${status}${result}\n\n<tg-spoiler>🧾 ${encodeState(state)}</tg-spoiler>`;
 }
 function keyboard(state) {
   return { inline_keyboard: [

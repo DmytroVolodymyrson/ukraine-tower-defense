@@ -21,7 +21,7 @@ Rules:
 
 ## Technical shape
 
-The Telegram bot is a Vercel serverless webhook at `/api/telegram`. To avoid adding a database in v0, raid state is encoded into the Telegram message caption itself. Callback handlers parse the message caption, update roster/state, and edit the same message.
+The Telegram bot is a Vercel serverless webhook at `/api/telegram`. To avoid adding a database in v0, raid state is encoded into a spoiler footer in the Telegram message caption itself. Callback handlers parse the message caption, update roster/state, and edit the same message.
 
 This makes the MVP stateless and cheap, but it is not the final architecture. For production-scale chat-vs-chat and durable leaderboards, move state to Redis/Supabase/Postgres.
 
