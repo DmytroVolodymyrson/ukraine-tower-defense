@@ -109,7 +109,7 @@
           name: "Солдат",
           icon: "🇺🇦",
           color: "#5fb1ff",
-          cost: 50,
+          cost: 70,
           range: 110,
           damage: 28,
           fireRate: 0.4,
@@ -122,7 +122,7 @@
           name: "Снайпер",
           icon: "🔱",
           color: "#ffd76f",
-          cost: 100,
+          cost: 140,
           range: 200,
           damage: 110,
           fireRate: 1.3,
@@ -135,7 +135,7 @@
           name: "Артилерія",
           icon: "🌻",
           color: "#ff9b7d",
-          cost: 150,
+          cost: 190,
           range: 145,
           damage: 70,
           fireRate: 1.6,
@@ -148,7 +148,7 @@
           name: "Байрактар",
           icon: "🛩️",
           color: "#a6f5a1",
-          cost: 200,
+          cost: 260,
           range: 160,
           damage: 45,
           fireRate: 0.24,
@@ -185,7 +185,7 @@
           name: "Орк",
           hp: 140,
           speed: 42,
-          reward: 10,
+          reward: 6,
           armor: 0,
           size: 14,
           isAir: false,
@@ -196,7 +196,7 @@
           name: "БТР",
           hp: 350,
           speed: 34,
-          reward: 25,
+          reward: 14,
           armor: 3,
           size: 16,
           isAir: false,
@@ -207,7 +207,7 @@
           name: "Танк",
           hp: 800,
           speed: 20,
-          reward: 50,
+          reward: 28,
           armor: 7,
           size: 18,
           isAir: false,
@@ -218,7 +218,7 @@
           name: "Гелікоптер",
           hp: 400,
           speed: 58,
-          reward: 40,
+          reward: 24,
           armor: 2,
           size: 14,
           isAir: true,
@@ -229,7 +229,7 @@
           name: "Генерал",
           hp: 4000,
           speed: 18,
-          reward: 200,
+          reward: 90,
           armor: 12,
           size: 24,
           isAir: false,
@@ -326,11 +326,11 @@
       }
 
       function towerUpgradeCost(tower) {
-        return Math.round(tower.type.cost * (0.65 + tower.level * 0.45));
+        return Math.round(tower.type.cost * (0.95 + tower.level * 0.65));
       }
 
       function towerSellValue(tower) {
-        return Math.round(tower.type.cost * 0.55 + (tower.level - 1) * tower.type.cost * 0.3);
+        return Math.round(tower.type.cost * 0.35 + (tower.level - 1) * tower.type.cost * 0.18);
       }
 
       function setNotice(text) {
@@ -468,7 +468,7 @@
           if (enemy.dead) continue;
           if (enemy.type.isAir && !tower.type.canHitAir) continue;
           const d = dist(tower.x, tower.y, enemy.x, enemy.y);
-          if (d <= tower.type.range) {
+          if (d <= towerRange(tower)) {
             const progress = enemy.pathIndex + (enemy.type.isAir ? 0.15 : 0);
             if (progress > bestProgress) {
               bestProgress = progress;
@@ -555,7 +555,7 @@
           }
           state.waveActive = false;
           state.intermission = 6;
-          state.coins += 35 + state.wave * 3;
+          state.coins += 12 + state.wave * 2;
           setNotice(`Хвиля ${state.wave} відбита. Бонус ресурсів отримано.`);
         }
       }
@@ -1056,7 +1056,7 @@
 
       function resetGame() {
         state.wave = 0;
-        state.coins = 200;
+        state.coins = 120;
         state.lives = 20;
         state.towers = [];
         state.enemies = [];

@@ -25,5 +25,6 @@ npm run smoke
 - 10-wave win condition plus defeat overlay.
 - Slower enemy spacing and staggered labels for more readable early waves.
 - Tower selection, upgrade, and sell actions.
+- Tighter economy: lower starting resources, lower enemy rewards, smaller wave bonuses, and more expensive upgrades force harder build choices.
 - Build feedback messages and clearer wave status.
 - Static-file deployment remains supported.
