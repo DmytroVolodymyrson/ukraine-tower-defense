@@ -19,33 +19,39 @@ https://tower-defense-blond.vercel.app
 - Added Telegram-style haptic feedback for build, upgrade, selection, warning, victory, and defeat.
 - Added a share button that opens Telegram's share URL for the stable Vercel app.
 
-## Publishing through BotFather
+## Telegram bot identity
 
-We cannot complete BotFather registration without the target bot identity. Use a project-specific bot, not Cedric's bot.
+Configured production bot:
 
-1. Create or choose a bot in `@BotFather`.
-2. Confirm the token identity before wiring it anywhere:
-
-```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getMe"
+```text
+Name: Оркодав TD
+Username: @orkodavtd_bot
+Bot API id: 8632943487
+Menu button: Играть -> https://tower-defense-blond.vercel.app
 ```
 
-3. In BotFather, create/configure the Mini App or menu button with:
+The live token was used only for Bot API setup and must not be committed. If it was posted in a public chat, rotate it in BotFather.
+
+## Publishing through BotFather
+
+1. The bot identity has been verified with Bot API `getMe`.
+2. The default chat menu button has been set with Bot API `setChatMenuButton`.
+3. If BotFather still asks for a Mini App URL or menu button URL, use:
 
 ```text
 https://tower-defense-blond.vercel.app
 ```
 
-4. Suggested title:
+4. Current title:
 
 ```text
-Захист України
+Оркодав TD
 ```
 
-5. Suggested short description:
+5. Current short description:
 
 ```text
-Tower defense Mini App про українську оборону. Будуй башти, стримуй хвилі, ділись результатом.
+Сатирическая tower defense Mini App: строй башни, стопай орков, делись результатом.
 ```
 
 6. If a backend bot is added later, validate `Telegram.WebApp.initData` server-side before trusting user IDs or scores.
