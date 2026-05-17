@@ -102,9 +102,11 @@ async function handleMessage(message) {
 }
 
 async function handleRandomEvent(req) {
-  const secret = process.env.RANDOM_EVENT_SECRET;
+  const secret = process.env.CRON_SECRET || process.env.RANDOM_EVENT_SECRET;
+  const authHeader = req.headers?.authorization;
   const provided = req.query?.key || req.headers?.['x-random-event-secret'];
-  if (!secret || provided !== secret) return { ok: false, error: 'random_event_disabled' };
+  const authorized = secret && (provided === secret || authHeader === `Bearer ${secret}`);
+  if (!authorized) return { ok: false, error: 'random_event_disabled' };
 
   const chatId = req.query?.chat_id || req.body?.chat_id || process.env.RANDOM_EVENT_CHAT_ID;
   if (!chatId) return { ok: false, error: 'missing_chat_id' };
