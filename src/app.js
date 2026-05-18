@@ -9,6 +9,7 @@
       const overlayTitle = document.getElementById("overlayTitle");
       const overlayText = document.getElementById("overlayText");
       const overlayAction = document.getElementById("overlayAction");
+      const mobileTowerButtons = [...document.querySelectorAll("[data-tower]")];
 
       const GRID_COLS = 20;
       const GRID_ROWS = 15;
@@ -1242,6 +1243,9 @@
         startButton.disabled = state.started && !state.gameOver;
         pauseButton.textContent = state.paused ? "Продовжити" : "Пауза";
         pauseButton.disabled = !state.started || state.gameOver;
+        mobileTowerButtons.forEach((button) => {
+          button.classList.toggle("is-selected", button.dataset.tower === state.selectedTowerId);
+        });
       }
 
       function startGame() {
@@ -1266,6 +1270,15 @@
       restartButton.addEventListener("click", startGame);
       pauseButton.addEventListener("click", togglePause);
       shareButton?.addEventListener("click", shareGame);
+      mobileTowerButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.selectedTowerId = button.dataset.tower;
+          state.selectedTower = null;
+          setNotice(`${towerTypes[state.selectedTowerId].name}: тапни по зеленому полю`);
+          haptic("selection");
+          updateButtons();
+        });
+      });
       overlayAction.addEventListener("click", () => {
         if (!state.started || state.gameOver) startGame();
         else togglePause();

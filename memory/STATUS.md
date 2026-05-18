@@ -3,7 +3,7 @@
 ## Current State
 - **Phase:** Live Telegram Mini App + group event bot
 - **Last updated:** 2026-05-18 by Cedric
-- **Blocked by:** Nothing known. `RANDOM_EVENT_CHAT_ID=-5106616662` is verified against Telegram and the random-wave endpoint sent message `11` to group `Orkodav TD`. Vercel deployment protection remains disabled for this public game project so the generated cron host can reach the function. Group buttons use Telegram `startapp` deep links because Bot API rejects `web_app` inline buttons in this group with `BUTTON_TYPE_INVALID`.
+- **Blocked by:** Nothing known. `RANDOM_EVENT_CHAT_ID=-5106616662` is verified against Telegram and the random-wave endpoint sent message `11` to group `Orkodav TD`. Vercel deployment protection remains disabled for this public game project so the generated cron host can reach the function. Group buttons use Telegram `startapp` deep links because Bot API rejects `web_app` inline buttons in this group with `BUTTON_TYPE_INVALID`. Mobile Mini App now has large tower buttons below the map.
 
 ## Done
 - [x] Telegram Mini App game deployed at `https://tower-defense-blond.vercel.app`.

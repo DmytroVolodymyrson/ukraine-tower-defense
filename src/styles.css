@@ -224,6 +224,50 @@ canvas {
   line-height: 1.35;
 }
 
+.mobile-buildbar {
+  display: none;
+  position: relative;
+  z-index: 1;
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  background: rgba(5, 15, 28, 0.62);
+}
+
+.mobile-buildbar p {
+  margin: 0 0 8px;
+  color: #d8e8ff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mobile-towers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-towers button {
+  min-height: 54px;
+  padding: 8px 7px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.12;
+  background: linear-gradient(180deg, rgba(20, 52, 84, 0.98), rgba(11, 29, 50, 0.98));
+}
+
+.mobile-towers button.is-selected {
+  color: #142033;
+  border-color: rgba(255, 226, 117, 0.92);
+  background: linear-gradient(180deg, #ffe27a, #e6aa28);
+}
+
+.mobile-towers span {
+  font-size: 12px;
+  opacity: 0.86;
+}
+
 @media (max-width: 760px) {
   body { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
 
@@ -256,9 +300,10 @@ canvas {
   }
 
   .game-frame { border-radius: 21px; }
+  .mobile-buildbar { display: block; }
   canvas {
-    height: min(54vh, 430px);
-    max-height: calc(var(--tg-viewport-height) - 255px);
+    height: min(46vh, 390px);
+    max-height: calc(var(--tg-viewport-height) - 330px);
     aspect-ratio: auto;
     border-radius: 18px;
   }
@@ -269,5 +314,5 @@ canvas {
 
 @media (max-width: 430px) {
   .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  canvas { height: min(51vh, 410px); max-height: calc(var(--tg-viewport-height) - 260px); }
+  canvas { height: min(43vh, 360px); max-height: calc(var(--tg-viewport-height) - 350px); }
 }
