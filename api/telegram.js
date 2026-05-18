@@ -25,10 +25,17 @@ function appUrl(chatId) {
   return url.toString();
 }
 
+function miniAppDeepLink(chatId) {
+  const url = new URL(`https://t.me/${BOT_USERNAME}`);
+  const payload = chatId ? `wave_${String(chatId).replace(/^-/, '')}` : 'wave';
+  url.searchParams.set('startapp', payload);
+  return url.toString();
+}
+
 function gameKeyboard(chatId) {
   return {
     inline_keyboard: [[
-      { text: '🚌 Стрибнути в бусик', url: appUrl(chatId) },
+      { text: '🚌 Стрибнути в бусик', url: miniAppDeepLink(chatId) },
     ]],
   };
 }
