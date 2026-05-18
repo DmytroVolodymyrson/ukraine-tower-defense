@@ -25,17 +25,36 @@ function appUrl(chatId) {
   return url.toString();
 }
 
+function wavePayload(chatId) {
+  return chatId ? `wave_${String(chatId).replace(/^-/, '')}` : 'wave';
+}
+
 function miniAppDeepLink(chatId) {
   const url = new URL(`https://t.me/${BOT_USERNAME}`);
-  const payload = chatId ? `wave_${String(chatId).replace(/^-/, '')}` : 'wave';
-  url.searchParams.set('startapp', payload);
+  url.searchParams.set('startapp', wavePayload(chatId));
   return url.toString();
+}
+
+function privateStartLink(chatId) {
+  const url = new URL(`https://t.me/${BOT_USERNAME}`);
+  url.searchParams.set('start', wavePayload(chatId));
+  return url.toString();
+}
+
+function launchUrl(chatId) {
+  // `?startapp=` only works after BotFather enables the bot's Main Mini App.
+  return process.env.TELEGRAM_MAIN_MINI_APP === 'true' ? miniAppDeepLink(chatId) : privateStartLink(chatId);
+}
+
+function chatIdFromWavePayload(payload) {
+  const match = /^wave_(\d+)$/.exec(payload || '');
+  return match ? `-${match[1]}` : null;
 }
 
 function gameKeyboard(chatId) {
   return {
     inline_keyboard: [[
-      { text: '🚌 Стрибнути в бусик', url: miniAppDeepLink(chatId) },
+      { text: '🚌 Стрибнути в бусик', url: launchUrl(chatId) },
     ]],
   };
 }
@@ -86,6 +105,19 @@ async function handleMessage(message) {
 
   if (text.startsWith('/start') || text.startsWith('/help')) {
     if (chat.type === 'private') {
+      const payload = text.split(/\s+/, 2)[1] || '';
+      const waveChatId = chatIdFromWavePayload(payload);
+      if (waveChatId) {
+        return tg('sendMessage', {
+          chat_id: chat.id,
+          text: '🚌 Бусик готовий. Тисни кнопку нижче, щоб відкрити гру.',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🎮 Відкрити Оркодав TD', web_app: { url: appUrl(waveChatId) } },
+            ]],
+          },
+        });
+      }
       return tg('sendMessage', {
         chat_id: chat.id,
         text: '🚌 Оркодав TD запускає хвилі в групових чатах. Додай бота в чат, а гра стартує з рандомної тривоги.',
