@@ -3,7 +3,7 @@
 ## Current State
 - **Phase:** Live Telegram Mini App + group event bot
 - **Last updated:** 2026-05-18 by Cedric
-- **Blocked by:** Scheduled random waves need the correct target Telegram group chat ID in `RANDOM_EVENT_CHAT_ID`; current production value returns Telegram `chat not found`.
+- **Blocked by:** Scheduled random waves need the correct target Telegram group chat ID in `RANDOM_EVENT_CHAT_ID`; current production value returns Telegram `chat not found`. Vercel deployment protection was also blocking the generated cron host and has been disabled for this public game project.
 
 ## Done
 - [x] Telegram Mini App game deployed at `https://tower-defense-blond.vercel.app`.
