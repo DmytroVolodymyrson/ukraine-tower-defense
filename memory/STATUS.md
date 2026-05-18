@@ -1,12 +1,14 @@
 # STATUS.md — Project State
 
 ## Current State
-- **Phase:** Discovery
-- **Last updated:** [date] by [agent/person]
-- **Blocked by:** Nothing
+- **Phase:** Live Telegram Mini App + group event bot
+- **Last updated:** 2026-05-18 by Cedric
+- **Blocked by:** Scheduled random waves need the correct target Telegram group chat ID in `RANDOM_EVENT_CHAT_ID`; current production value returns Telegram `chat not found`.
 
 ## Done
-- [ ] (nothing yet)
+- [x] Telegram Mini App game deployed at `https://tower-defense-blond.vercel.app`.
+- [x] Group event bot webhook deployed at `/api/telegram`.
+- [x] Added `/chatid` helper command and masked random-event target logging for cron debugging.
 
 ## In Progress
 - [ ] Initial setup and requirements gathering

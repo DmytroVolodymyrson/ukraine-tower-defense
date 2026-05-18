@@ -69,6 +69,14 @@ async function handleMessage(message) {
   const text = message.text || '';
   const isGroup = chat.type === 'group' || chat.type === 'supergroup';
 
+  if (text.startsWith('/chatid')) {
+    return tg('sendMessage', {
+      chat_id: chat.id,
+      text: `chat_id: <code>${chat.id}</code>\nchat_type: <code>${chat.type}</code>`,
+      parse_mode: 'HTML',
+    });
+  }
+
   if (text.startsWith('/start') || text.startsWith('/help')) {
     if (chat.type === 'private') {
       return tg('sendMessage', {
@@ -110,6 +118,7 @@ async function handleRandomEvent(req) {
 
   const chatId = req.query?.chat_id || req.body?.chat_id || process.env.RANDOM_EVENT_CHAT_ID;
   if (!chatId) return { ok: false, error: 'missing_chat_id' };
+  console.log('random event target', String(chatId).replace(/\d(?=\d{3})/g, '*'));
   return sendWave(chatId);
 }
 
@@ -130,6 +139,11 @@ module.exports = async function handler(req, res) {
     const update = req.body || {};
     if (update.message) await handleMessage(update.message);
     if (update.my_chat_member && update.my_chat_member.new_chat_member?.status === 'member') {
+      console.log('bot added to chat', {
+        id: update.my_chat_member.chat.id,
+        type: update.my_chat_member.chat.type,
+        title: update.my_chat_member.chat.title,
+      });
       await tg('sendMessage', {
         chat_id: update.my_chat_member.chat.id,
         text: '🚌 Оркодав TD у чаті. Тихо сидимо, поки не прилетить рандомна тривога.',
