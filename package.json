@@ -6,7 +6,7 @@
     "serve": "http-server -p 8080 -a 127.0.0.1",
     "start": "npm run serve",
     "check": "node --check src/app.js && node --check api/telegram.js",
-    "smoke": "npm run check"
+    "smoke": "npm run check && node scripts/smoke.mjs"
   },
   "keywords": [],
   "author": "",

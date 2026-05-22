@@ -141,10 +141,6 @@ async function handleMessage(message) {
     });
   }
 
-  if (isGroup && text && !text.startsWith('/') && Math.random() < 0.08) {
-    return sendWave(chat.id);
-  }
-
   return null;
 }
 
