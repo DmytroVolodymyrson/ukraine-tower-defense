@@ -1232,10 +1232,12 @@
         overlayText.textContent = text;
         overlayAction.textContent = actionLabel;
         overlay.classList.add("is-visible");
+        document.documentElement.classList.add("overlay-visible");
       }
 
       function hideOverlay() {
         overlay.classList.remove("is-visible");
+        document.documentElement.classList.remove("overlay-visible");
       }
 
       function updateButtons() {
