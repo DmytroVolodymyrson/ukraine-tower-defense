@@ -5,6 +5,8 @@
       const pauseButton = document.getElementById("pauseButton");
       const restartButton = document.getElementById("restartButton");
       const shareButton = document.getElementById("shareButton");
+      const wavePill = document.getElementById("wavePill");
+      const coinPill = document.getElementById("coinPill");
       const overlay = document.getElementById("gameOverlay");
       const overlayTitle = document.getElementById("overlayTitle");
       const overlayText = document.getElementById("overlayText");
@@ -22,36 +24,104 @@
       const MAX_WAVES = 10;
       const telegram = window.Telegram?.WebApp || null;
 
+      function setRootPx(name, value) {
+        const n = Number(value);
+        if (Number.isFinite(n)) document.documentElement.style.setProperty(name, `${Math.max(0, Math.round(n))}px`);
+      }
+
       function applyTelegramViewport() {
-        const h = telegram?.viewportHeight || window.innerHeight;
-        document.documentElement.style.setProperty("--tg-viewport-height", `${Math.max(480, Math.round(h))}px`);
+        const viewportHeight = telegram?.viewportHeight || window.innerHeight;
+        const stableHeight = telegram?.viewportStableHeight || viewportHeight;
+        setRootPx("--tg-viewport-height", Math.max(480, viewportHeight));
+        setRootPx("--tg-viewport-stable-height", Math.max(480, stableHeight));
+      }
+
+      function applyTelegramSafeArea() {
+        const safe = telegram?.contentSafeAreaInset || telegram?.safeAreaInset || {};
+        setRootPx("--tg-safe-top", safe.top || 0);
+        setRootPx("--tg-safe-right", safe.right || 0);
+        setRootPx("--tg-safe-bottom", safe.bottom || 0);
+        setRootPx("--tg-safe-left", safe.left || 0);
       }
 
       function applyTelegramTheme() {
         const theme = telegram?.themeParams || {};
         const root = document.documentElement;
-        if (theme.bg_color) root.style.setProperty("--tg-theme-bg-color", theme.bg_color);
-        if (theme.secondary_bg_color) root.style.setProperty("--tg-theme-secondary-bg-color", theme.secondary_bg_color);
-        if (theme.text_color) root.style.setProperty("--tg-theme-text-color", theme.text_color);
+        Object.entries(theme).forEach(([key, value]) => {
+          if (!value) return;
+          root.style.setProperty(`--tg-theme-${key.replaceAll("_", "-")}`, value);
+        });
         try {
-          telegram?.setHeaderColor?.(theme.bg_color || "#0057b8");
+          telegram?.setHeaderColor?.(theme.secondary_bg_color || theme.bg_color || "#0d1520");
           telegram?.setBackgroundColor?.(theme.bg_color || "#0d1520");
+        } catch (_) {}
+      }
+
+      function configureTelegramChrome() {
+        if (!telegram) return;
+        try {
+          telegram.ready();
+          telegram.expand();
+          if (telegram.isVersionAtLeast?.("8.0")) telegram.requestFullscreen?.();
+          telegram.disableVerticalSwipes?.();
+        } catch (_) {}
+
+        telegram.MainButton?.onClick?.(() => {
+          if (!state.started || state.gameOver) startGame();
+          else if (state.paused) togglePause();
+        });
+        telegram.BackButton?.onClick?.(() => {
+          if (state.started && !state.gameOver) togglePause();
+        });
+      }
+
+      function updateTelegramControls() {
+        if (!telegram) return;
+        try {
+          const main = telegram.MainButton;
+          if (main) {
+            if (!state.started || state.gameOver) {
+              main.setText?.(state.gameOver ? "Заново" : "Почати гру");
+              main.show?.();
+            } else if (state.paused) {
+              main.setText?.("Продовжити");
+              main.show?.();
+            } else {
+              main.hide?.();
+            }
+            main.setParams?.({
+              color: telegram.themeParams?.button_color || "#2f7cf6",
+              text_color: telegram.themeParams?.button_text_color || "#ffffff",
+              is_active: true,
+              is_visible: (!state.started || state.paused || state.gameOver),
+            });
+          }
+          if (state.started && !state.gameOver) telegram.BackButton?.show?.();
+          else telegram.BackButton?.hide?.();
         } catch (_) {}
       }
 
       function initTelegramMiniApp() {
         applyTelegramViewport();
-        window.addEventListener("resize", applyTelegramViewport);
+        applyTelegramSafeArea();
+        window.addEventListener("resize", () => {
+          applyTelegramViewport();
+          applyTelegramSafeArea();
+        });
         if (!telegram) return;
         document.documentElement.classList.add("telegram-mini-app");
-        try {
-          telegram.ready();
-          telegram.expand();
-          telegram.disableVerticalSwipes?.();
-        } catch (_) {}
         applyTelegramTheme();
-        telegram.onEvent?.("viewportChanged", applyTelegramViewport);
-        telegram.onEvent?.("themeChanged", applyTelegramTheme);
+        configureTelegramChrome();
+        telegram.onEvent?.("viewportChanged", () => {
+          applyTelegramViewport();
+          applyTelegramSafeArea();
+        });
+        telegram.onEvent?.("safeAreaChanged", applyTelegramSafeArea);
+        telegram.onEvent?.("contentSafeAreaChanged", applyTelegramSafeArea);
+        telegram.onEvent?.("themeChanged", () => {
+          applyTelegramTheme();
+          updateTelegramControls();
+        });
       }
 
       function haptic(kind = "selection") {
@@ -1083,6 +1153,7 @@
       }
 
       function render() {
+        updateStatusPills();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         drawTopBar();
         drawGrid();
@@ -1233,11 +1304,18 @@
         overlayAction.textContent = actionLabel;
         overlay.classList.add("is-visible");
         document.documentElement.classList.add("overlay-visible");
+        updateTelegramControls();
       }
 
       function hideOverlay() {
         overlay.classList.remove("is-visible");
         document.documentElement.classList.remove("overlay-visible");
+        updateTelegramControls();
+      }
+
+      function updateStatusPills() {
+        if (wavePill) wavePill.textContent = `Хвиля ${Math.min(state.wave, MAX_WAVES)}/${MAX_WAVES}`;
+        if (coinPill) coinPill.textContent = `${state.coins} 💰`;
       }
 
       function updateButtons() {
@@ -1245,15 +1323,18 @@
         startButton.disabled = state.started && !state.gameOver;
         pauseButton.textContent = state.paused ? "Продовжити" : "Пауза";
         pauseButton.disabled = !state.started || state.gameOver;
+        updateStatusPills();
         mobileTowerButtons.forEach((button) => {
           button.classList.toggle("is-selected", button.dataset.tower === state.selectedTowerId);
         });
+        updateTelegramControls();
       }
 
       function startGame() {
         resetGame();
         state.started = true;
         state.paused = false;
+        document.documentElement.classList.add("is-started");
         hideOverlay();
         updateButtons();
         if (!musicStarted) { bgMusic.play().catch(() => {}); musicStarted = true; }
